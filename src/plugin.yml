@@ -1,0 +1,7 @@
+name: InventoryBank
+main: fructose.Invbank.Invbank
+version: 0.1
+commands:
+    inv:
+        description:
+        usage:
