@@ -25,14 +25,11 @@ public class Invbank extends JavaPlugin{
 	//Links the BasicPlayerListener
 	private final InvbankPlayerListener playerListener = new InvbankPlayerListener(this);
 	//Links the BasicBlockListener
-    private final InvbankBlockListener blockListener = new InvbankBlockListener(this);
-
 	@Override
 	//When the plugin is disabled this method is called.
 	public void onDisable() {
-		//Print "Basic Disabled" on the log.
 		playerListener.disconnect();
-		log(this.getDescription().getName()+ " Disabled");		
+		log(this.getDescription().getName()+ " Disabled");	
 	}
 
 	@Override
@@ -40,10 +37,17 @@ public class Invbank extends JavaPlugin{
 	public void onEnable() {
 		//Create the pluginmanage pm.
 		PluginManager pm = getServer().getPluginManager();
+		if(!playerListener.isConnected()){
+			pm.disablePlugin(this);
+			return;
+		}
+		
+		(new File("lib" + File.separator)).mkdir();
+        (new File("lib" + File.separator)).setWritable(true);
+        (new File("lib" + File.separator)).setExecutable(true);
 		//Create PlayerCommand listener
 	    //pm.registerEvent(Event.Type., this.playerListener, Event.Priority.Normal, this);
 	    //Create BlockPlaced listener
-        pm.registerEvent(Event.Type.BLOCK_PLACED, blockListener, Event.Priority.Normal, this);
         pm.registerEvent(Event.Type.PLAYER_LOGIN, this.playerListener, Event.Priority.Normal, this);
        //Get the infomation from the yml file.
         PluginDescriptionFile pdfFile = this.getDescription();
@@ -76,4 +80,5 @@ public class Invbank extends JavaPlugin{
 	 {
 		 System.out.println("[Invbank] "+msg);
 	 }
+
 }

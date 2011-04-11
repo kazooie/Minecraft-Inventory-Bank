@@ -99,16 +99,19 @@ public class DBToolKit {
 	private Connection getConnection(String dbURL, String user, String password)
 		throws SQLException, ClassNotFoundException {
 		Class.forName("com.mysql.jdbc.Driver");
-		DriverManager.setLoginTimeout(1);
 		return DriverManager.getConnection(dbURL,user,password);
 	}
 	public void close(){
-		try {
-			conn.close();
-		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+		if(conn!=null)
+		{
+			try {
+				conn.close();
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			instance = null;
+			conn = null;
 		}
-		instance = null;
 	}
 }

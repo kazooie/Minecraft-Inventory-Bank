@@ -1,5 +1,9 @@
 package fructose.Invbank;
 
+import java.io.UnsupportedEncodingException;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.util.HashMap;
 
@@ -7,6 +11,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.material.MaterialData;
 
 /**
  * InvbankDBConn
@@ -25,15 +30,18 @@ public class InvbankDBConn {
 	/**
 	 * Called automatically when initialized. Initializes the DBToolKit if it isn't already connected.
 	 */
-	private void connect(){
+	private boolean connect(){
 		//TODO make this more flexible, use a configuration file.
 		try {
-			DBToolKit.init("jdbc:mysql://mother.dyndns.tv:3306/InventoryBank","inventorybank","syrup");
+			DBToolKit.init("jdbc:mysql://mother.dyndns.tv:3306/minecraft","inventorybank","syrup");
 		} catch (SQLException e) {
 			e.printStackTrace();
+			return false;
 		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
+			System.out.println("Please add the jdbc mysql jar to the lib directory.");
+			return false;
 		}
+		return true;
 	}
 	public boolean isConnected(){
 		return !(DBToolKit.getInstance()==null);
@@ -65,11 +73,42 @@ public class InvbankDBConn {
 		}
 		return false;
 	}
+	public static String toHex(byte[] bytes) {
+	    BigInteger bi = new BigInteger(1, bytes);
+	    return String.format("%0" + (bytes.length << 1) + "x", bi);
+	}
 	
 	public boolean updatePassword(Player player, String password)
 	{
-		//TODO implement passwords
-		return false;
+		
+		byte[] bytesOfMessage;
+		byte[] thedigest;
+		try {
+			bytesOfMessage = password.getBytes("UTF-8");
+			MessageDigest md = MessageDigest.getInstance("MD5");
+			thedigest = md.digest(bytesOfMessage);
+		} catch (UnsupportedEncodingException e) {
+			player.sendMessage("Unable to hash password");
+			e.printStackTrace();
+			return false;
+		} catch (NoSuchAlgorithmException e) {
+			player.sendMessage("Unable to hash password");
+			e.printStackTrace();
+			return false;
+		}
+		
+		try {
+			DBToolKit.getInstance().updateQuery("" +
+					"UPDATE user " +
+					"SET password = '"+toHex(thedigest)+"' "+
+					"WHERE user.name = '"+player.getName()+"'");
+		} catch (SQLException e) {
+			player.sendMessage("Unable to store password");
+			e.printStackTrace();
+			return false;
+		}
+		
+		return true;
 	}
 	
 	/**
@@ -135,9 +174,35 @@ public class InvbankDBConn {
 	 * @param player
 	 * @param item
 	 */
-	public void depositItem(Player player, ItemStack item){
+	public void depositItem(Player player, ItemStack item, boolean depositAll){
 		updateItem(item);
 		int prevQuantity = 0;
+		MaterialData itemMeta = item.getData();
+		short itemDur = 0;
+		byte itemData = 0x0;
+		if(itemMeta!=null){
+			itemData = itemMeta.getData();
+			player.sendMessage("Metadata found: "+itemMeta.toString());
+		}
+		else
+			player.sendMessage("Material data not found.");
+		itemDur = item.getDurability();
+		
+		int amount = 0;
+		if(depositAll){
+			ItemStack[] items = player.getInventory().getContents();
+			for(int i=0; i< items.length; i++){
+				if(items[i].getType() == item.getType()){
+					amount += items[i].getAmount();
+					//player.getInventory().setItem(i, null);
+				}
+			}
+		}
+		else{
+			amount = item.getAmount();
+		}
+
+		player.sendMessage("Item Data Byte:"+Integer.toHexString((int)itemData)+" Durability:"+itemDur);
 		try {
 			int invExists = DBToolKit.getInstance().selectQuery("" +
 					"SELECT inventory.quantity " +
@@ -150,7 +215,7 @@ public class InvbankDBConn {
 			{
 				int userId = getUserDatabaseId(player);
 				int itemId = getItemDatabaseId(item);
-				DBToolKit.getInstance().updateQuery("INSERT INTO inventory (user_id, item_id, quantity) VALUES ("+userId+","+itemId+","+item.getAmount()+")");
+				DBToolKit.getInstance().updateQuery("INSERT INTO inventory (user_id, item_id, quantity) VALUES ("+userId+","+itemId+","+amount+")");
 			}
 			else
 			{
@@ -159,17 +224,69 @@ public class InvbankDBConn {
 				int itemId = getItemDatabaseId(item);
 				DBToolKit.getInstance().updateQuery("" +
 						"UPDATE inventory " +
-						"SET quantity = "+(prevQuantity + item.getAmount())+" " +
+						"SET quantity = "+(prevQuantity + amount)+" " +
 						"WHERE user_id = "+userId+" AND " +
 						"item_id = "+itemId);
 			}
-			player.sendMessage(item.getType().toString()+": Previous: "+prevQuantity+" Now: "+(prevQuantity+item.getAmount()));
+			player.sendMessage(item.getType().toString()+": Previous: "+prevQuantity+" Now: "+(prevQuantity+amount));
 		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			player.sendMessage("An error occurred.");
+			player.sendMessage("An error occurred. The server probably needs restarted.");
 			e.printStackTrace();
+			DBToolKit.getInstance().close();
+			return;
 		}
 		
+		//Remove inventory
+		
+		if(depositAll){
+			ItemStack[] items = player.getInventory().getContents();
+			for(int i=0; i< items.length; i++){
+				if(items[i].getType() == item.getType()){
+					player.getInventory().setItem(i, null);
+				}
+			}
+		}
+		else{
+			player.setItemInHand(null);
+		}
+
+		
+		
+	}
+	public void listItems(Player player, int page){
+		int textRows = 9;
+		int userId = getUserDatabaseId(player);
+		try {
+			int numItems = DBToolKit.getInstance().selectQuery("" +
+					"SELECT item.block_id, item.name, inventory.quantity " +
+					"FROM item, inventory, user " +
+					"WHERE user.id = " + userId + " AND " +
+					"user.id = inventory.user_id AND " +
+					"item.id = inventory.item_id " +
+					"AND inventory.quantity > 0 " +
+					"ORDER BY item.block_id ASC");
+			int startPoint = (page-1)*textRows;
+			int totalPages = (int) Math.ceil((double)numItems / (double)textRows);
+			if(startPoint > numItems || page < 1){
+				player.sendMessage("Invalid page number. Number of pages: "+totalPages);
+				return;
+			}
+			player.sendMessage("Storing "+numItems+" item types. Page "+page+" of "+totalPages);
+			int endPoint = startPoint + textRows;
+			if(endPoint > numItems)
+				endPoint = numItems;
+			for(int i = startPoint; i < endPoint; i++)
+			{
+				int blockId = Integer.parseInt(DBToolKit.getInstance().get_value(i, 0));
+				String itemName = DBToolKit.getInstance().get_value(i,1);
+				int quantity = Integer.parseInt(DBToolKit.getInstance().get_value(i,2));
+				player.sendMessage("id"+blockId + ":"+itemName+" - "+quantity);
+				
+			}
+		} catch (SQLException e) {
+			player.sendMessage("Database error.");
+			e.printStackTrace();
+		}
 	}
 	/**
 	 * Withdraws a quantity of a given item and adds it to the player's inventory.
@@ -233,6 +350,11 @@ public class InvbankDBConn {
 							break;
 						}
 					}
+					DBToolKit.getInstance().updateQuery("" +
+							"DELETE FROM inventory " +
+							"WHERE user_id = "+userId+" AND "+
+							"item_id = "+itemId+" AND " +
+							"quantity = 0");
 					player.sendMessage(Material.getMaterial(blockId)+": Previous: "+prevQuantity+" Now: "+leftover);
 					
 					
@@ -244,10 +366,8 @@ public class InvbankDBConn {
 		}
 	}
 	public void disconnect() {
-		DBToolKit.getInstance().close();		
+		if(this.isConnected())
+			DBToolKit.getInstance().close();		
 	}
-	public void listItems(Player player, int i) {
-		
-		
-	}
+
 }
