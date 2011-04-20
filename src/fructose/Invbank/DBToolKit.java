@@ -9,11 +9,17 @@ import com.mysql.jdbc.Driver;
 
 public class DBToolKit {
 	private static DBToolKit instance;
+	String url, user, pass;
+	
 	private static Connection conn;
 	public ArrayList theSelectStatementData;
+	public String lastQuery;
 	
 	private DBToolKit(String url, String user, String pass) throws SQLException, ClassNotFoundException{
-		conn = getConnection(url,user,pass);
+		this.url = url;
+		this.user = user;
+		this.pass = pass;
+		getConnection();
 	}
 	public static void init(String url, String user, String pass) throws SQLException, ClassNotFoundException{
 		if(instance==null)
@@ -23,6 +29,15 @@ public class DBToolKit {
 		return instance;
 	}
 	public int selectQuery(String query) throws SQLException{
+		lastQuery = query;
+		if(!conn.isValid(0)){
+			try {
+				getConnection();
+			} catch (ClassNotFoundException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		}
 		ArrayList theColumns;
 		int nNumberOfColumns = 0;
 		int nRowCounter = 0;
@@ -85,6 +100,15 @@ public class DBToolKit {
 		return sReturn;
 	}
 	public int updateQuery(String query) throws SQLException{
+		lastQuery = query;
+		if(!conn.isValid(0)){
+			try {
+				getConnection();
+			} catch (ClassNotFoundException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+		}
 		Statement st = conn.createStatement();
 		int val = 0;
 		try {
@@ -96,10 +120,12 @@ public class DBToolKit {
 		st.close();
 		return val;
 	}
-	private Connection getConnection(String dbURL, String user, String password)
+	private void getConnection()
 		throws SQLException, ClassNotFoundException {
+		if(conn!=null)
+			conn.close();
 		Class.forName("com.mysql.jdbc.Driver");
-		return DriverManager.getConnection(dbURL,user,password);
+		conn = DriverManager.getConnection(url,user,pass);
 	}
 	public void close(){
 		if(conn!=null)

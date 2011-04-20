@@ -167,6 +167,20 @@ public class InvbankDBConn {
 		return -1;
 	}
 	
+	public int getBlockId(int itemId)
+	{
+		try {
+			int blockExists = DBToolKit.getInstance().selectQuery("" +
+					"SELECT block_id FROM item WHERE id = "+itemId);
+			if(blockExists > 0){
+				return Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return 0;
+	}
 	/**
 	 * Deposits a single ItemStack reference into the database. 
 	 * Adds the item entry if it doesn't already exist.
@@ -182,10 +196,9 @@ public class InvbankDBConn {
 		byte itemData = 0x0;
 		if(itemMeta!=null){
 			itemData = itemMeta.getData();
-			player.sendMessage("Metadata found: "+itemMeta.toString());
+			//player.sendMessage("Metadata found: "+itemMeta.toString());
+			player.sendMessage("WARNING: InvBank cannot currently store metadata with items (wool color, etc)");
 		}
-		else
-			player.sendMessage("Material data not found.");
 		itemDur = item.getDurability();
 		
 		int amount = 0;
@@ -201,57 +214,58 @@ public class InvbankDBConn {
 		else{
 			amount = item.getAmount();
 		}
-
-		player.sendMessage("Item Data Byte:"+Integer.toHexString((int)itemData)+" Durability:"+itemDur);
-		try {
-			int invExists = DBToolKit.getInstance().selectQuery("" +
-					"SELECT inventory.quantity " +
-					"FROM inventory, user, item " +
-					"WHERE inventory.item_id = item.id AND " +
-					"inventory.user_id = user.id AND " +
-					"user.name = '"+player.getName()+"' AND " +
-					"item.block_id = "+item.getTypeId());
-			if(invExists == 0)
-			{
-				int userId = getUserDatabaseId(player);
-				int itemId = getItemDatabaseId(item);
-				DBToolKit.getInstance().updateQuery("INSERT INTO inventory (user_id, item_id, quantity) VALUES ("+userId+","+itemId+","+amount+")");
-			}
-			else
-			{
-				prevQuantity = Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
-				int userId = getUserDatabaseId(player);
-				int itemId = getItemDatabaseId(item);
-				DBToolKit.getInstance().updateQuery("" +
-						"UPDATE inventory " +
-						"SET quantity = "+(prevQuantity + amount)+" " +
-						"WHERE user_id = "+userId+" AND " +
-						"item_id = "+itemId);
-			}
-			player.sendMessage(item.getType().toString()+": Previous: "+prevQuantity+" Now: "+(prevQuantity+amount));
-		} catch (SQLException e) {
-			player.sendMessage("An error occurred. The server probably needs restarted.");
-			e.printStackTrace();
-			DBToolKit.getInstance().close();
-			return;
-		}
 		
-		//Remove inventory
+		if(amount!=0)
+		{
+			player.sendMessage("Item Data Byte:"+Integer.toHexString((int)itemData)+" Durability:"+itemDur);
+			try {
+				int invExists = DBToolKit.getInstance().selectQuery("" +
+						"SELECT inventory.quantity " +
+						"FROM inventory, user, item " +
+						"WHERE inventory.item_id = item.id AND " +
+						"inventory.user_id = user.id AND " +
+						"user.name = '"+player.getName()+"' AND " +
+						"item.block_id = "+item.getTypeId());
+				if(invExists == 0)
+				{
+					int userId = getUserDatabaseId(player);
+					int itemId = getItemDatabaseId(item);
+					DBToolKit.getInstance().updateQuery("INSERT INTO inventory (user_id, item_id, quantity) VALUES ("+userId+","+itemId+","+amount+")");
+				}
+				else
+				{
+					prevQuantity = Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+					int userId = getUserDatabaseId(player);
+					int itemId = getItemDatabaseId(item);
+					DBToolKit.getInstance().updateQuery("" +
+							"UPDATE inventory " +
+							"SET quantity = "+(prevQuantity + amount)+" " +
+							"WHERE user_id = "+userId+" AND " +
+							"item_id = "+itemId);
+				}
+				player.sendMessage(item.getType().toString()+": Previous: "+prevQuantity+" Now: "+(prevQuantity+amount));
+			} catch (SQLException e) {
+				player.sendMessage("An error occurred. The server probably needs restarted.");
+				e.printStackTrace();
+				DBToolKit.getInstance().close();
+				return;
+			}
 		
-		if(depositAll){
-			ItemStack[] items = player.getInventory().getContents();
-			for(int i=0; i< items.length; i++){
-				if(items[i].getType() == item.getType()){
-					player.getInventory().setItem(i, null);
+		
+			//Remove inventory
+			
+			if(depositAll){
+				ItemStack[] items = player.getInventory().getContents();
+				for(int i=0; i< items.length; i++){
+					if(items[i].getType() == item.getType()){
+						player.getInventory().setItem(i, null);
+					}
 				}
 			}
-		}
-		else{
-			player.setItemInHand(null);
-		}
-
-		
-		
+			else{
+				player.setItemInHand(null);
+			}
+		}		
 	}
 	public void listItems(Player player, int page){
 		int textRows = 9;
@@ -369,5 +383,93 @@ public class InvbankDBConn {
 		if(this.isConnected())
 			DBToolKit.getInstance().close();		
 	}
+	public void listKits(Player player) {
+		int userId = getUserDatabaseId(player);
+		int numKits = 0;
+		try {
+			numKits = DBToolKit.getInstance().selectQuery("" +
+					"SELECT name FROM kit_master WHERE user_id = " + userId);
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		if(numKits > 0){
+			String kits = "Your kits: ";
+			for(int i=0; i< numKits; i++)
+				kits += DBToolKit.getInstance().get_value(i, 0)+", ";
+			kits = kits.substring(0, kits.length()-2);
+			player.sendMessage(kits);			
+		}
+	}
+	public void withdrawKit(Player player, String kitName) {
+		int userId = getUserDatabaseId(player);
+		try {
+			int kitExists = DBToolKit.getInstance().selectQuery("" +
+					"SELECT kit.item_id, kit.stacks FROM kit, kit_master " +
+					"WHERE kit_master.user_id = "+userId+" AND " +
+					"kit_master.name = '"+kitName+"' AND " +
+					"kit_master.id = kit.kit_id");
+			if(kitExists > 0){
+				int [] item_ids = new int[kitExists];
+				int [] item_counts = new int[kitExists];
+				for(int i=0; i < kitExists; i++){
+					item_ids[i] = Integer.parseInt(DBToolKit.getInstance().get_value(i, 0));
+					item_counts[i] = Integer.parseInt(DBToolKit.getInstance().get_value(i, 1));
+				}
+				for(int i=0; i < kitExists; i++){
+					int blockId = getBlockId(item_ids[i]);
+					withdrawItem(player, blockId, item_counts[i]);
+				}
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+	}
+	public void sellItem(Player player, int blockId, int quantityPer,
+			int price, int amount) {
+		int userId = getUserDatabaseId(player);
+		
+		//First remove from user's inventory
+		try {
+			int hasItem = DBToolKit.getInstance().selectQuery("" +
+					"SELECT inventory.quantity, item.id FROM inventory, item " +
+					"WHERE item.block_id = "+blockId+" AND " +
+					"item.id = inventory.item_id AND " +
+					"inventory.user_id = "+ userId);
+			if(hasItem > 0){
+				int currentQuantity = Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+				int itemId = Integer.parseInt(DBToolKit.getInstance().get_value(0, 1));
+				if(currentQuantity < amount){
+					//SELL ALL
+					player.sendMessage("Selling all "+currentQuantity+" "+Material.getMaterial(blockId).toString()+" from your inventory.");
+					amount = currentQuantity;
+					DBToolKit.getInstance().updateQuery("" +
+							"DELETE FROM inventory " +
+							"WHERE user_id = "+userId+" AND "+
+							"item_id = "+itemId);
+				}
+				else{
+					//SELL SOME
+					int newQuantity = currentQuantity - amount;
+					player.sendMessage(Material.getMaterial(blockId)+": Previous: "+currentQuantity+" Now: "+newQuantity);
+					//TODO Adjust user's inventory here
+				}
+				//TODO add item to store table here
+				
+			}
+			else{
+				player.sendMessage("Please add some "+Material.getMaterial(blockId).toString()+" in your inventory bank first.");
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		
+		
+	}
+
 
 }
