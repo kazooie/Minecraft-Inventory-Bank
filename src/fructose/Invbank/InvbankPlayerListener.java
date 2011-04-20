@@ -149,9 +149,25 @@ public class InvbankPlayerListener extends PlayerListener{
 			player.sendMessage("Please enter all arguments.");
 		}
 	}
-	private void exeucteBuy(String[] split, Player player) {
-		player.sendMessage("Recieved message: buy");
-		//TODO
+	/**
+	 * "/inv buy <item> <amount>
+	 * @param split
+	 * @param player
+	 */
+	private void executeBuy(String[] split, Player player) {
+		if(split.length == 4) {
+			int blockId = parseItem(split[2]);
+			try {
+				int amount = Integer.parseInt(split[3]);
+				dbConn.buyItem(player, blockId, amount);
+			}
+			catch(NumberFormatException e) {
+				player.sendMessage("Unable to read arguments.");
+			}
+		}
+		else {
+			player.sendMessage("Please enter all arguments.");
+		}
 	}
 	private void executeShopList(String[] split, Player player) {
 		player.sendMessage("Recieved message: shoplist");

@@ -150,6 +150,23 @@ public class InvbankDBConn {
 		return -1;
 	}
 	/**
+	 * Takes a user id and returns their name.
+	 * @param user_id
+	 * @return
+	 */
+	public String getUserName(int user_id)
+	{
+		try {
+			int playerExists = DBToolKit.getInstance().selectQuery("SELECT name FROM user WHERE id = " + user_id + ";");
+			if(playerExists == 1)
+				return String.parseString(DBToolKit.getInstance().get_value(0, 0));
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		System.out.println("Couldn't find player: "+player.getName());
+		return "";
+	}
+	/**
 	 * Takes an ItemStack reference and returns the item_id from the database. This is NOT the same as block_id.
 	 * @param item
 	 * @return
@@ -173,6 +190,21 @@ public class InvbankDBConn {
 			int blockExists = DBToolKit.getInstance().selectQuery("" +
 					"SELECT block_id FROM item WHERE id = "+itemId);
 			if(blockExists > 0){
+				return Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return 0;
+	}
+	
+	public int getItemId(int blockId)
+	{
+		try {
+			int itemExists = DBToolKit.getInstance().selectQuery("" +
+					"SELECT id FROM item WHERE block_id = " + blockId);
+			if(itemExists >0) {
 				return Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
 			}
 		} catch (SQLException e) {
@@ -427,6 +459,102 @@ public class InvbankDBConn {
 		}
 		
 	}
+	
+	public int getBalance(String player) {
+		// TODO test if this works as an int, the balance seems to be have a decimal
+		try {
+			int balanceExists = DBToolKit.getInstance().selectQuery("" +
+					"SELECT balance FROM iconomy WHERE username = " + user + ";");
+			if(balanceExists > 0){
+				return Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return 0;
+	}
+	
+	public int setBalance(String user, int balance) {
+		// TODO again not sure if int is right, and also there may be better iconomy methods for this
+		try {
+			DBToolKit.getInstance().updateQuery("" +
+					"UPDATE iconomy SET balance = " + balance + " " +
+					"WHERE username = " + user + ";");
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void buyItem(Player player, int blockId, int amount) {
+		// idea is to just buy cheapest available up to amount desired limited by money available
+		// this could maybe be improved by using item stacks instead
+		int userId = getUserDatabaseId(player);
+		int itemId = getItemId(blockId);
+		int currentBalance = getBalance(player.name());
+		try {
+			// first we want to know how much of this item the buyer already has, if any
+			int supply = 0;
+			int currentSupply = DBToolKit.getInstance().selectQuery("" +
+					"SELECT quantity FROM inventory i " +
+					"WHERE user_id = " + userId + " AND " +
+					"item_id = " + itemId + ";");
+			if(currentSupply > 0) {
+				supply = Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+			}
+			// now keep buying until buyer is satisfied
+			while(amount > 0) {
+				int lowestPrice = DBToolKit.getInstance().selectQuery("" +
+						"SELECT seller_id, stock, MIN(price) FROM store " +
+						"WHERE item_id = " + itemId + " " +
+						"GROUP BY 1,2 ORDER BY 3 LIMIT 1;");
+				if(lowestPrice > 0) {
+					int seller = Integer.parseInt(DBToolKit.getInstance().get_value(0, 0));
+					int stock = Integer.parseInt(DBToolKit.getInstance().get_value(0, 1));
+					int price = Integer.parseInt(DBToolKit.getInstance().get_value(0, 2));
+					String sellerName = getUserName(seller);
+					int sellerBalance = getBalance(sellerName);
+					i
+					if(stock > amount) {
+						int bought = amount; // buy what you need
+					} else {
+						int bought = stock; // buy what you can
+					}
+					// first check that buyer can afford and update money
+					int cost = bought * price;
+					if(cost < currentBalance) {
+						currentBalance -= cost;
+						sellerBalance += cost;
+					} else {
+						player.sendMessage("Cannot afford " + Material.getMaterial(blockId).toString() + "!");
+						break; // not 100% sure this will get all the way out of the while, maybe return?
+					}
+					setBalance(player.name(), currentBalance);
+					setBalance(sellerName, sellerBalance);
+					// then actually update store/inventory
+					supply += bought;
+					stock -= bought;
+					DBToolKit.getInstance().updateQuery("" +
+							"UPDATE inventory SET quantity = " + supply + " " +
+							"WHERE user_id = " + userId + " AND " +
+							"item_id = " + itemId + ";");						
+					DBToolKit.getInstance().updateQuery("" +
+							"UPDATE store SET stock = " + stock + " " +
+							"WHERE seller_id=" + seller + " AND " +
+							"item_id=" + itemId + ";");
+					player.sendMessage("Bought %d of " + Material.getMaterial(blockId).toString(), bought);
+					amount -= bought;
+					}
+				}
+				else {
+					player.sendMessage("No more " + Material.getMaterial(blockId).toString() + " available!");
+					amount = 0; // maybe just break instead?
+				}
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	public void sellItem(Player player, int blockId, int quantityPer,
 			int price, int amount) {
 		int userId = getUserDatabaseId(player);
