@@ -534,9 +534,8 @@ public class InvbankDBConn {
 					supply += bought;
 					stock -= bought;
 					DBToolKit.getInstance().updateQuery("" +
-							"UPDATE inventory SET quantity = " + supply + " " +
-							"WHERE user_id = " + userId + " AND " +
-							"item_id = " + itemId + ";");						
+							"INSERT OR REPLACE INTO inventory (user_id, item_id, quantity) " +
+							"VALUES (" + userId + ", " + itemId + ", " + supply + ");")
 					DBToolKit.getInstance().updateQuery("" +
 							"UPDATE store SET stock = " + stock + " " +
 							"WHERE seller_id=" + seller + " AND " +
